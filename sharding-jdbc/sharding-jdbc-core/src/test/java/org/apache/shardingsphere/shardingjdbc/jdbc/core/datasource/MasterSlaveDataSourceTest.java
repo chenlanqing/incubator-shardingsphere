@@ -19,9 +19,9 @@ package org.apache.shardingsphere.shardingjdbc.jdbc.core.datasource;
 
 import org.apache.shardingsphere.api.config.masterslave.LoadBalanceStrategyConfiguration;
 import org.apache.shardingsphere.api.config.masterslave.MasterSlaveRuleConfiguration;
+import org.apache.shardingsphere.api.hint.HintManager;
 import org.apache.shardingsphere.core.constant.DatabaseType;
-import org.apache.shardingsphere.core.hint.HintManagerHolder;
-import org.apache.shardingsphere.core.routing.router.masterslave.MasterVisitedManager;
+import org.apache.shardingsphere.core.route.router.masterslave.MasterVisitedManager;
 import org.apache.shardingsphere.shardingjdbc.api.MasterSlaveDataSourceFactory;
 import org.apache.shardingsphere.shardingjdbc.fixture.TestDataSource;
 import org.apache.shardingsphere.shardingjdbc.jdbc.core.connection.MasterSlaveConnection;
@@ -70,7 +70,7 @@ public final class MasterSlaveDataSourceTest {
     @Before
     @After
     public void reset() {
-        HintManagerHolder.clear();
+        HintManager.clear();
         MasterVisitedManager.clear();
         TransactionTypeHolder.clear();
     }
@@ -89,7 +89,7 @@ public final class MasterSlaveDataSourceTest {
         MasterSlaveRuleConfiguration masterSlaveRuleConfig = new MasterSlaveRuleConfiguration(
                 "ds", "masterDataSource", Collections.singletonList("slaveDataSource"), new LoadBalanceStrategyConfiguration("ROUND_ROBIN"));
         try {
-            ((MasterSlaveDataSource) MasterSlaveDataSourceFactory.createDataSource(dataSourceMap, masterSlaveRuleConfig, new Properties())).getDatabaseType();
+            MasterSlaveDataSourceFactory.createDataSource(dataSourceMap, masterSlaveRuleConfig, new Properties());
         } finally {
             verify(masterConnection).close();
             verify(slaveConnection).close();
@@ -137,6 +137,6 @@ public final class MasterSlaveDataSourceTest {
         MasterSlaveConnection connection = masterSlaveDataSource.getConnection();
         assertNotNull(connection.getDataSourceMap());
         assertThat(connection.getDataSourceMap().values().size(), is(2));
-        assertThat(connection.getTransactionType(), is(TransactionType.XA));
+        assertThat(connection.getTransactionType(), is(TransactionType.LOCAL));
     }
 }

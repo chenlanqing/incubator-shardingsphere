@@ -22,8 +22,6 @@ import org.apache.shardingsphere.shardingjdbc.jdbc.adapter.AbstractConnectionAda
 import org.apache.shardingsphere.shardingjdbc.jdbc.core.datasource.MasterSlaveDataSource;
 import org.apache.shardingsphere.shardingjdbc.jdbc.core.statement.MasterSlavePreparedStatement;
 import org.apache.shardingsphere.shardingjdbc.jdbc.core.statement.MasterSlaveStatement;
-import org.apache.shardingsphere.transaction.ShardingTransactionManagerEngine;
-import org.apache.shardingsphere.transaction.core.TransactionType;
 
 import javax.sql.DataSource;
 import java.sql.DatabaseMetaData;
@@ -45,16 +43,14 @@ public final class MasterSlaveConnection extends AbstractConnectionAdapter {
     
     private final Map<String, DataSource> dataSourceMap;
     
-    public MasterSlaveConnection(final MasterSlaveDataSource masterSlaveDataSource, final Map<String, DataSource> dataSourceMap,
-                                 final ShardingTransactionManagerEngine shardingTransactionManagerEngine, final TransactionType transactionType) {
-        super(shardingTransactionManagerEngine, transactionType);
+    public MasterSlaveConnection(final MasterSlaveDataSource masterSlaveDataSource, final Map<String, DataSource> dataSourceMap) {
         this.masterSlaveDataSource = masterSlaveDataSource;
         this.dataSourceMap = dataSourceMap;
     }
     
     @Override
     public DatabaseMetaData getMetaData() throws SQLException {
-        return getCachedConnections().isEmpty() ? masterSlaveDataSource.getCachedDatabaseMetaData() : getCachedConnections().values().iterator().next().getMetaData(); 
+        return getCachedConnections().isEmpty() ? masterSlaveDataSource.getCachedDatabaseMetaData() : getCachedConnections().values().iterator().next().getMetaData();
     }
     
     @Override

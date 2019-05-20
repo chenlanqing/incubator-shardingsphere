@@ -19,19 +19,18 @@ package org.apache.shardingsphere.shardingjdbc.jdbc.core.statement;
 
 import com.google.common.base.Optional;
 import lombok.Getter;
-import org.apache.shardingsphere.core.constant.properties.ShardingPropertiesConstant;
-import org.apache.shardingsphere.core.executor.sql.execute.result.StreamQueryResult;
-import org.apache.shardingsphere.core.keygen.GeneratedKey;
-import org.apache.shardingsphere.core.merger.MergeEngine;
-import org.apache.shardingsphere.core.merger.MergeEngineFactory;
-import org.apache.shardingsphere.core.merger.QueryResult;
-import org.apache.shardingsphere.core.merger.dql.DQLMergeEngine;
-import org.apache.shardingsphere.core.parsing.parser.sql.dal.DALStatement;
-import org.apache.shardingsphere.core.parsing.parser.sql.dml.insert.InsertStatement;
-import org.apache.shardingsphere.core.parsing.parser.sql.dql.DQLStatement;
-import org.apache.shardingsphere.core.parsing.parser.sql.dql.select.SelectStatement;
-import org.apache.shardingsphere.core.routing.SQLRouteResult;
-import org.apache.shardingsphere.core.routing.StatementRoutingEngine;
+import org.apache.shardingsphere.core.SimpleQueryShardingEngine;
+import org.apache.shardingsphere.core.execute.sql.execute.result.QueryResult;
+import org.apache.shardingsphere.core.execute.sql.execute.result.StreamQueryResult;
+import org.apache.shardingsphere.core.merge.MergeEngine;
+import org.apache.shardingsphere.core.merge.MergeEngineFactory;
+import org.apache.shardingsphere.core.optimize.GeneratedKey;
+import org.apache.shardingsphere.core.parse.sql.statement.dal.DALStatement;
+import org.apache.shardingsphere.core.parse.sql.statement.dml.DQLStatement;
+import org.apache.shardingsphere.core.parse.sql.statement.dml.InsertStatement;
+import org.apache.shardingsphere.core.parse.sql.statement.dml.SelectStatement;
+import org.apache.shardingsphere.core.route.SQLRouteResult;
+import org.apache.shardingsphere.core.rule.ShardingRule;
 import org.apache.shardingsphere.shardingjdbc.executor.StatementExecutor;
 import org.apache.shardingsphere.shardingjdbc.jdbc.adapter.AbstractStatementAdapter;
 import org.apache.shardingsphere.shardingjdbc.jdbc.core.ShardingContext;
@@ -44,6 +43,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -87,10 +87,10 @@ public final class ShardingStatement extends AbstractStatementAdapter {
         ResultSet result;
         try {
             clearPrevious();
-            sqlRoute(sql);
+            shard(sql);
             initStatementExecutor();
             MergeEngine mergeEngine = MergeEngineFactory.newInstance(connection.getShardingContext().getDatabaseType(), connection.getShardingContext().getShardingRule(), 
-                    routeResult.getSqlStatement(), connection.getShardingContext().getMetaData().getTable(), statementExecutor.executeQuery());
+                    routeResult, connection.getShardingContext().getMetaData().getTable(), statementExecutor.executeQuery());
             result = getResultSet(mergeEngine);
         } finally {
             currentResultSet = null;
@@ -113,11 +113,12 @@ public final class ShardingStatement extends AbstractStatementAdapter {
         for (Statement each : statementExecutor.getStatements()) {
             ResultSet resultSet = each.getResultSet();
             resultSets.add(resultSet);
-            queryResults.add(new StreamQueryResult(resultSet));
+            ShardingRule shardingRule = connection.getShardingContext().getShardingRule();
+            queryResults.add(new StreamQueryResult(resultSet, shardingRule, shardingRule.getShardingEncryptorEngine()));
         }
         if (routeResult.getSqlStatement() instanceof SelectStatement || routeResult.getSqlStatement() instanceof DALStatement) {
             MergeEngine mergeEngine = MergeEngineFactory.newInstance(connection.getShardingContext().getDatabaseType(),
-                    connection.getShardingContext().getShardingRule(), routeResult.getSqlStatement(), connection.getShardingContext().getMetaData().getTable(), queryResults);
+                    connection.getShardingContext().getShardingRule(), routeResult, connection.getShardingContext().getMetaData().getTable(), queryResults);
             currentResultSet = getCurrentResultSet(resultSets, mergeEngine);
         }
         return currentResultSet;
@@ -128,19 +129,17 @@ public final class ShardingStatement extends AbstractStatementAdapter {
     }
     
     private ShardingResultSet getCurrentResultSet(final List<ResultSet> resultSets, final MergeEngine mergeEngine) throws SQLException {
-        return mergeEngine instanceof DQLMergeEngine 
-                ? new ShardingResultSet(resultSets, mergeEngine.merge(), ((DQLMergeEngine) mergeEngine).getColumnLabelIndexMap(), this) : new ShardingResultSet(resultSets, mergeEngine.merge(), this);
+        return new ShardingResultSet(resultSets, mergeEngine.merge(), this);
     }
     
     @Override
     public int executeUpdate(final String sql) throws SQLException {
         try {
             clearPrevious();
-            sqlRoute(sql);
+            shard(sql);
             initStatementExecutor();
             return statementExecutor.executeUpdate();
         } finally {
-            refreshTableMetaData(connection.getShardingContext(), routeResult.getSqlStatement());
             currentResultSet = null;
         }
     }
@@ -152,7 +151,7 @@ public final class ShardingStatement extends AbstractStatementAdapter {
         }
         try {
             clearPrevious();
-            sqlRoute(sql);
+            shard(sql);
             initStatementExecutor();
             return statementExecutor.executeUpdate(autoGeneratedKeys);
         } finally {
@@ -165,7 +164,7 @@ public final class ShardingStatement extends AbstractStatementAdapter {
         returnGeneratedKeys = true;
         try {
             clearPrevious();
-            sqlRoute(sql);
+            shard(sql);
             initStatementExecutor();
             return statementExecutor.executeUpdate(columnIndexes);
         } finally {
@@ -178,7 +177,7 @@ public final class ShardingStatement extends AbstractStatementAdapter {
         returnGeneratedKeys = true;
         try {
             clearPrevious();
-            sqlRoute(sql);
+            shard(sql);
             initStatementExecutor();
             return statementExecutor.executeUpdate(columnNames);
         } finally {
@@ -190,11 +189,10 @@ public final class ShardingStatement extends AbstractStatementAdapter {
     public boolean execute(final String sql) throws SQLException {
         try {
             clearPrevious();
-            sqlRoute(sql);
+            shard(sql);
             initStatementExecutor();
             return statementExecutor.execute();
         } finally {
-            refreshTableMetaData(connection.getShardingContext(), routeResult.getSqlStatement());
             currentResultSet = null;
         }
     }
@@ -206,7 +204,7 @@ public final class ShardingStatement extends AbstractStatementAdapter {
         }
         try {
             clearPrevious();
-            sqlRoute(sql);
+            shard(sql);
             initStatementExecutor();
             return statementExecutor.execute(autoGeneratedKeys);
         } finally {
@@ -219,7 +217,7 @@ public final class ShardingStatement extends AbstractStatementAdapter {
         returnGeneratedKeys = true;
         try {
             clearPrevious();
-            sqlRoute(sql);
+            shard(sql);
             initStatementExecutor();
             return statementExecutor.execute(columnIndexes);
         } finally {
@@ -232,7 +230,7 @@ public final class ShardingStatement extends AbstractStatementAdapter {
         returnGeneratedKeys = true;
         try {
             clearPrevious();
-            sqlRoute(sql);
+            shard(sql);
             initStatementExecutor();
             return statementExecutor.execute(columnNames);
         } finally {
@@ -251,10 +249,11 @@ public final class ShardingStatement extends AbstractStatementAdapter {
         }
     }
     
-    private void sqlRoute(final String sql) {
+    private void shard(final String sql) {
         ShardingContext shardingContext = connection.getShardingContext();
-        routeResult = new StatementRoutingEngine(shardingContext.getShardingRule(), 
-                shardingContext.getMetaData(), shardingContext.getDatabaseType(), shardingContext.getShardingProperties().<Boolean>getValue(ShardingPropertiesConstant.SQL_SHOW)).route(sql);
+        SimpleQueryShardingEngine shardingEngine = new SimpleQueryShardingEngine(
+                shardingContext.getShardingRule(), shardingContext.getShardingProperties(), shardingContext.getMetaData(), shardingContext.getDatabaseType(), shardingContext.getParsingResultCache());
+        routeResult = shardingEngine.shard(sql, Collections.emptyList());
     }
     
     private void clearPrevious() throws SQLException {
@@ -292,7 +291,7 @@ public final class ShardingStatement extends AbstractStatementAdapter {
     public ResultSet getGeneratedKeys() throws SQLException {
         Optional<GeneratedKey> generatedKey = getGeneratedKey();
         if (returnGeneratedKeys && generatedKey.isPresent()) {
-            return new GeneratedKeysResultSet(routeResult.getGeneratedKey().getGeneratedKeys().iterator(), generatedKey.get().getColumn().getName(), this);
+            return new GeneratedKeysResultSet(routeResult.getGeneratedKey().getGeneratedKeys().iterator(), generatedKey.get().getColumnName(), this);
         }
         if (1 == getRoutedStatements().size()) {
             return getRoutedStatements().iterator().next().getGeneratedKeys();
@@ -307,4 +306,3 @@ public final class ShardingStatement extends AbstractStatementAdapter {
         return Optional.absent();
     }
 }
-

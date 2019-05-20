@@ -19,13 +19,13 @@ package org.apache.shardingsphere.shardingjdbc.jdbc.core.resultset;
 
 import com.google.common.base.Optional;
 import lombok.SneakyThrows;
-import org.apache.shardingsphere.core.encrypt.ShardingEncryptorEngine;
-import org.apache.shardingsphere.core.merger.MergedResult;
+import org.apache.shardingsphere.core.merge.MergedResult;
 import org.apache.shardingsphere.core.rule.ShardingRule;
+import org.apache.shardingsphere.core.strategy.encrypt.ShardingEncryptorEngine;
 import org.apache.shardingsphere.shardingjdbc.jdbc.core.ShardingContext;
 import org.apache.shardingsphere.shardingjdbc.jdbc.core.connection.ShardingConnection;
 import org.apache.shardingsphere.shardingjdbc.jdbc.core.statement.ShardingStatement;
-import org.apache.shardingsphere.spi.algorithm.encrypt.ShardingEncryptor;
+import org.apache.shardingsphere.spi.encrypt.ShardingEncryptor;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -63,13 +63,10 @@ public final class ShardingResultSetTest {
     
     private ShardingResultSet shardingResultSet;
     
-    private ShardingResultSet shardingResultSet1;
-    
     @Before
     public void setUp() {
         mergeResultSet = mock(MergedResult.class);
         shardingResultSet = new ShardingResultSet(getResultSets(), mergeResultSet, getShardingStatement());
-        shardingResultSet1 = new ShardingResultSet(getResultSets(), mergeResultSet, Collections.singletonMap("label", 1), getShardingStatement());
     }
     
     @SneakyThrows
@@ -201,7 +198,7 @@ public final class ShardingResultSetTest {
     @Test
     public void assertGetDoubleWithColumnLabelWithColumnLabelIndexMap() throws SQLException {
         when(mergeResultSet.getValue("label", double.class)).thenReturn(1D);
-        assertThat(shardingResultSet1.getDouble("label"), is(1D));
+        assertThat(shardingResultSet.getDouble("label"), is(1D));
     }
     
     @Test
